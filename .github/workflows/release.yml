@@ -1,0 +1,58 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: K-Gesture.exe
+            asset_name: K-Gesture-Windows.exe
+          - os: macos-latest
+            artifact_name: K-Gesture.dmg
+            asset_name: K-Gesture-MacOS.dmg
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --add-data "assets;assets" --add-data "hand_landmarker.task;." --name "K-Gesture" main.py
+
+      - name: Build for MacOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Build .app bundle
+          pyinstaller --noconfirm --windowed --add-data "assets:assets" --add-data "hand_landmarker.task:." --name "K-Gesture" main.py
+          
+          # Create DMG
+          mkdir -p dist/dmg
+          cp -r dist/K-Gesture.app dist/dmg/
+          hdiutil create -volname "K-Gesture" -srcfolder dist/dmg -ov -format UDZO dist/K-Gesture.dmg
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
