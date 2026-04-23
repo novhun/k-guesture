@@ -36,6 +36,11 @@ Icon
 config.plist
 *.swp
 
+# PyInstaller / Build Folders
+build/
+dist/
+*.spec
+
 # Project Specific Data
 data/gestures.db
 data/audio/*.mp3
@@ -48,6 +53,3 @@ current_gesture.json.tmp
 .idea/
 *.sublime-project
 *.sublime-workspace
-
-# Model files (optional, but keeping hand_landmarker.task in repo is usually fine if small)
-# hand_landmarker.task
