@@ -5,9 +5,11 @@ from mediapipe.tasks.python import vision
 from mediapipe import tasks
 
 class GestureRecognizer:
-    def __init__(self):
-        # Initialize the HandLandmarker using the new Tasks API
-        # Using verified import paths for Tasks API
+    def __init__(self, use_face=False, use_eye=False):
+        self.use_face = use_face
+        self.use_eye = use_eye
+        
+        # Initialize HandLandmarker
         base_options = tasks.BaseOptions(model_asset_path='hand_landmarker.task')
         options = vision.HandLandmarkerOptions(
             base_options=base_options,
@@ -18,6 +20,26 @@ class GestureRecognizer:
         )
         self.landmarker = vision.HandLandmarker.create_from_options(options)
         
+        # Initialize FaceLandmarker (Optional)
+        self.face_landmarker = None
+        if self.use_face or self.use_eye:
+            try:
+                face_base_options = tasks.BaseOptions(model_asset_path='face_landmarker.task')
+                face_options = vision.FaceLandmarkerOptions(
+                    base_options=face_base_options,
+                    output_face_blendshapes=True,
+                    output_facial_transformation_matrixes=True,
+                    num_faces=1,
+                    min_face_detection_confidence=0.5,
+                    min_face_presence_confidence=0.5,
+                    min_tracking_confidence=0.5
+                )
+                self.face_landmarker = vision.FaceLandmarker.create_from_options(face_options)
+            except Exception as e:
+                print(f"Warning: Could not initialize FaceLandmarker (check for face_landmarker.task): {e}")
+                self.use_face = False
+                self.use_eye = False
+        
         # Hand connections for drawing (legacy HAND_CONNECTIONS)
         self.connections = [
             (0, 1), (1, 2), (2, 3), (3, 4), # Thumb
@@ -27,26 +49,38 @@ class GestureRecognizer:
             (0, 17), (17, 18), (18, 19), (19, 20), # Pinky
             (5, 9), (9, 13), (13, 17) # Palm
         ]
+        
+        # Face Landmark Indices (Key points to keep gesture data small)
+        self.face_key_indices = [
+            1,   # Nose tip
+            13,  # Upper lip
+            14,  # Lower lip
+            33,  # Left eye inner
+            263, # Right eye inner
+            61,  # Left mouth corner
+            291, # Right mouth corner
+            152  # Chin
+        ]
+        
+        # Eye Iris Indices
+        self.iris_indices = list(range(468, 478)) # 468-472 Left, 473-477 Right
 
     def process_frame(self, frame):
         """
         Processes a BGR frame, returns the processed frame (with landmarks drawn)
-        and the list of landmarks if hands are detected.
+        and the list of landmarks if hands/face are detected.
         """
-        # Convert BGR to RGB (MediaPipe Image)
+        h, w, _ = frame.shape
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
 
-        # Process landmarks
-        detection_result = self.landmarker.detect(mp_image)
+        # 1. Process Hand Landmarks
+        hand_result = self.landmarker.detect(mp_image)
+        all_landmarks = []
 
-        all_hands_landmarks = []
-
-        if detection_result.hand_landmarks:
-            h, w, _ = frame.shape
-            for hand_landmarks in detection_result.hand_landmarks:
-                # Draw landmarks manually
-                for i, lm in enumerate(hand_landmarks):
+        if hand_result.hand_landmarks:
+            for hand_landmarks in hand_result.hand_landmarks:
+                for lm in hand_landmarks:
                     cx, cy = int(lm.x * w), int(lm.y * h)
                     cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
 
@@ -54,16 +88,50 @@ class GestureRecognizer:
                     start_idx, end_idx = connection
                     start_lm = hand_landmarks[start_idx]
                     end_lm = hand_landmarks[end_idx]
-                    start_pos = (int(start_lm.x * w), int(start_lm.y * h))
-                    end_pos = (int(end_lm.x * w), int(end_lm.y * h))
-                    cv2.line(frame, start_pos, end_pos, (0, 255, 0), 2)
+                    cv2.line(frame, (int(start_lm.x * w), int(start_lm.y * h)), 
+                             (int(end_lm.x * w), int(end_lm.y * h)), (0, 255, 0), 2)
                 
-                # Extract landmarks for this hand
-                all_hands_landmarks.append(self.extract_single_hand_landmarks(hand_landmarks))
+                all_landmarks.extend(self.extract_single_hand_landmarks(hand_landmarks))
 
-        # Flatten all detected hands into one list
-        combined_landmarks = [item for sublist in all_hands_landmarks for item in sublist] if all_hands_landmarks else None
+        # 2. Process Face & Eye Landmarks (Optional)
+        if (self.use_face or self.use_eye) and self.face_landmarker:
+            face_result = self.face_landmarker.detect(mp_image)
+            if face_result.face_landmarks:
+                for face_landmarks in face_result.face_landmarks:
+                    # Draw Key Face Points
+                    if self.use_face:
+                        for idx in self.face_key_indices:
+                            lm = face_landmarks[idx]
+                            cv2.circle(frame, (int(lm.x * w), int(lm.y * h)), 3, (255, 0, 255), -1)
+                        all_landmarks.extend(self.extract_face_landmarks(face_landmarks))
+                    
+                    # Draw Iris
+                    if self.use_eye:
+                        for idx in self.iris_indices:
+                            lm = face_landmarks[idx]
+                            cv2.circle(frame, (int(lm.x * w), int(lm.y * h)), 2, (0, 255, 255), -1)
+                        all_landmarks.extend(self.extract_eye_landmarks(face_landmarks))
+
+        combined_landmarks = all_landmarks if all_landmarks else None
         return frame, combined_landmarks
+
+    def extract_face_landmarks(self, face_landmarks):
+        """Extracts key face landmarks relative to nose tip."""
+        nose = face_landmarks[1]
+        landmarks = []
+        for idx in self.face_key_indices:
+            lm = face_landmarks[idx]
+            landmarks.extend([lm.x - nose.x, lm.y - nose.y, lm.z - nose.z])
+        return landmarks
+
+    def extract_eye_landmarks(self, face_landmarks):
+        """Extracts iris landmarks relative to nose tip."""
+        nose = face_landmarks[1]
+        landmarks = []
+        for idx in self.iris_indices:
+            lm = face_landmarks[idx]
+            landmarks.extend([lm.x - nose.x, lm.y - nose.y, lm.z - nose.z])
+        return landmarks
 
     def extract_single_hand_landmarks(self, hand_landmarks):
         """

@@ -21,7 +21,8 @@ class MainApp:
         
         # Initialize Core Modules
         init_db()
-        self.recognizer = GestureRecognizer()
+        self.load_tracking_settings()
+        self.recognizer = GestureRecognizer(use_face=self.enable_face, use_eye=self.enable_eye)
         self.audio_player = AudioPlayer()
         self.translator = Translator()
         
@@ -384,6 +385,10 @@ class MainApp:
         index = self.ui.combo_gender.findText("Male" if gender == "Male" else "Female")
         if index >= 0:
             self.ui.combo_gender.setCurrentIndex(index)
+            
+        self.ui.cb_enable_face.setChecked(get_setting('enable_face_tracking', '0') == '1')
+        self.ui.cb_enable_eye.setChecked(get_setting('enable_eye_tracking', '0') == '1')
+        self.load_tracking_settings()
 
         # UI Settings
         theme = get_setting('ui_theme', 'Dark')
@@ -413,6 +418,7 @@ class MainApp:
         
         lang = self.ui.combo_language.currentText()
         set_setting('voice_language', lang)
+        self.apply_tracking_settings()
         
         gender = self.ui.combo_gender.currentText()
         if gender == "Male":
@@ -448,6 +454,22 @@ class MainApp:
             set_setting('khmer_font_size', self.current_font_size)
             # Update the result label style
             self.ui.lbl_khmer_res.setStyleSheet(f"font-size: {self.current_font_size}px; font-weight: bold; color: #4CAF50;")
+
+    def load_tracking_settings(self):
+        self.enable_face = get_setting('enable_face_tracking', '0') == '1'
+        self.enable_eye = get_setting('enable_eye_tracking', '0') == '1'
+
+    def apply_tracking_settings(self):
+        face = self.ui.cb_enable_face.isChecked()
+        eye = self.ui.cb_enable_eye.isChecked()
+        set_setting('enable_face_tracking', '1' if face else '0')
+        set_setting('enable_eye_tracking', '1' if eye else '0')
+        
+        self.enable_face = face
+        self.enable_eye = eye
+        
+        # Re-initialize recognizer with new settings
+        self.recognizer = GestureRecognizer(use_face=face, use_eye=eye)
 
     def save_settings(self):
         new_idx = self.ui.combo_camera.currentData()

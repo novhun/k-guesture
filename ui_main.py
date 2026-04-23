@@ -36,6 +36,9 @@ class MainWindowUI(QMainWindow):
                 'ui_theme': 'Theme:',
                 'ui_lang': 'UI Language:',
                 'ui_font_size': 'Khmer Font Size:',
+                'set_tracking': 'Tracking Settings',
+                'track_face': 'Enable Face Tracking',
+                'track_eye': 'Enable Eye Tracking (Iris)',
                 'voice_eng': 'TTS Engine:',
                 'voice_gen': 'Voice Gender:',
                 'voice_lang': 'Playback Language:',
@@ -63,6 +66,9 @@ class MainWindowUI(QMainWindow):
                 'ui_theme': 'ស្បែក (Theme):',
                 'ui_lang': 'ភាសា UI:',
                 'ui_font_size': 'ទំហំអក្សរខ្មែរ:',
+                'set_tracking': 'ការកំណត់ការតាមដាន',
+                'track_face': 'បើកការតាមដានផ្ទៃមុខ',
+                'track_eye': 'បើកការតាមដានគ្រាប់ភ្នែក',
                 'voice_eng': 'ម៉ាស៊ីនសំឡេង:',
                 'voice_gen': 'ភេទសំឡេង:',
                 'voice_lang': 'ភាសានិយាយ:',
@@ -245,6 +251,16 @@ class MainWindowUI(QMainWindow):
         
         scroll_layout.addWidget(self.ui_group)
         
+        # Tracking Settings
+        from PyQt5.QtWidgets import QCheckBox
+        self.tracking_group = QGroupBox("Tracking Settings")
+        track_layout = QVBoxLayout(self.tracking_group)
+        self.cb_enable_face = QCheckBox("Enable Face Tracking")
+        self.cb_enable_eye = QCheckBox("Enable Eye Tracking (Iris)")
+        track_layout.addWidget(self.cb_enable_face)
+        track_layout.addWidget(self.cb_enable_eye)
+        scroll_layout.addWidget(self.tracking_group)
+        
         # Save Button
         self.btn_save_settings = QPushButton("Save Settings")
         scroll_layout.addWidget(self.btn_save_settings)
@@ -278,6 +294,9 @@ class MainWindowUI(QMainWindow):
         self.cam_group.setTitle(t['set_cam'])
         self.voice_group.setTitle(t['set_voice'])
         self.ui_group.setTitle(t['set_ui'])
+        self.tracking_group.setTitle(t['set_tracking'])
+        self.cb_enable_face.setText(t['track_face'])
+        self.cb_enable_eye.setText(t['track_eye'])
         self.lbl_font_size_tag.setText(t['ui_font_size'])
         self.lbl_settings_header.setText(t['tab_settings'])
 

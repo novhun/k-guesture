@@ -32,6 +32,8 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('tts_engine', 'Edge-TTS')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('voice_language', 'Khmer')")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('khmer_font_size', '32')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_face_tracking', '0')")
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('enable_eye_tracking', '0')")
     
     # Migration: Add image_path to gestures if it doesn't exist
     try:
