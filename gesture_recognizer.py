@@ -11,7 +11,7 @@ class GestureRecognizer:
         base_options = tasks.BaseOptions(model_asset_path='hand_landmarker.task')
         options = vision.HandLandmarkerOptions(
             base_options=base_options,
-            num_hands=1,
+            num_hands=2,
             min_hand_detection_confidence=0.7,
             min_hand_presence_confidence=0.5,
             min_tracking_confidence=0.5
@@ -31,7 +31,7 @@ class GestureRecognizer:
     def process_frame(self, frame):
         """
         Processes a BGR frame, returns the processed frame (with landmarks drawn)
-        and the list of landmarks if a hand is detected.
+        and the list of landmarks if hands are detected.
         """
         # Convert BGR to RGB (MediaPipe Image)
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -40,12 +40,12 @@ class GestureRecognizer:
         # Process landmarks
         detection_result = self.landmarker.detect(mp_image)
 
-        landmarks_list = None
+        all_hands_landmarks = []
 
         if detection_result.hand_landmarks:
+            h, w, _ = frame.shape
             for hand_landmarks in detection_result.hand_landmarks:
-                # Draw landmarks manually since drawing_utils is missing
-                h, w, _ = frame.shape
+                # Draw landmarks manually
                 for i, lm in enumerate(hand_landmarks):
                     cx, cy = int(lm.x * w), int(lm.y * h)
                     cv2.circle(frame, (cx, cy), 5, (0, 255, 0), -1)
@@ -58,15 +58,16 @@ class GestureRecognizer:
                     end_pos = (int(end_lm.x * w), int(end_lm.y * h))
                     cv2.line(frame, start_pos, end_pos, (0, 255, 0), 2)
                 
-                # Extract landmarks for comparison
-                landmarks_list = self.extract_landmarks(hand_landmarks)
-                break # Only process the first hand found
+                # Extract landmarks for this hand
+                all_hands_landmarks.append(self.extract_single_hand_landmarks(hand_landmarks))
 
-        return frame, landmarks_list
+        # Flatten all detected hands into one list
+        combined_landmarks = [item for sublist in all_hands_landmarks for item in sublist] if all_hands_landmarks else None
+        return frame, combined_landmarks
 
-    def extract_landmarks(self, hand_landmarks):
+    def extract_single_hand_landmarks(self, hand_landmarks):
         """
-        Extracts landmarks into a flat list, normalizes them relative to the wrist (landmark 0),
+        Extracts landmarks for a single hand into a flat list, normalizes them relative to the wrist (landmark 0),
         and scales them by the maximum distance to be scale-invariant.
         """
         landmarks = []
@@ -102,7 +103,7 @@ class GestureRecognizer:
         for gesture in stored_gestures:
             stored = np.array(gesture['landmarks'])
             
-            # Ensure same length
+            # Ensure same length (prevents 1-hand matching 2-hand gestures)
             if len(current) != len(stored):
                 continue
                 
@@ -117,34 +118,49 @@ class GestureRecognizer:
             return best_match
             
         return None
+
     def draw_landmarks_on_black_canvas(self, hand_landmarks_list, width=300, height=300):
         """
         Draws the landmarks onto a black background for a clean 'finger style' thumbnail.
-        hand_landmarks_list: a flattened list of 63 floats (normalized coordinates).
+        Supports multiple hands (multiples of 63 floats).
         """
         # Create black canvas
         canvas = np.zeros((height, width, 3), dtype=np.uint8)
         
-        # Reshape to (21, 3)
-        landmarks = np.array(hand_landmarks_list).reshape(21, 3)
-        
-        # Since landmarks are normalized relative to wrist and scaled, 
-        # we need to map them back to a visible range in the center of the canvas.
-        # We'll put the wrist (0,0) in the center.
-        center_x, center_y = width // 2, height // 2
-        scale = min(width, height) * 0.4
-        
-        coords = []
-        for i in range(21):
-            lx, ly = landmarks[i][0], landmarks[i][1]
-            # Invert Y for drawing (OpenCV Y increases downwards)
-            px = int(center_x + lx * scale)
-            py = int(center_y + ly * scale)
-            coords.append((px, py))
-            cv2.circle(canvas, (px, py), 4, (0, 255, 0), -1)
+        if not hand_landmarks_list:
+            return canvas
+
+        # Handle multiple hands
+        num_hands = len(hand_landmarks_list) // 63
+        for h_idx in range(num_hands):
+            hand_start = h_idx * 63
+            hand_data = hand_landmarks_list[hand_start : hand_start + 63]
             
-        for connection in self.connections:
-            start_idx, end_idx = connection
-            cv2.line(canvas, coords[start_idx], coords[end_idx], (255, 255, 255), 2)
+            # Reshape to (21, 3)
+            landmarks = np.array(hand_data).reshape(21, 3)
+            
+            # Wrist at (0,0) will be offset for each hand to keep them separate but visible
+            # For 2 hands, we'll shift them slightly left and right
+            offset_x = 0
+            if num_hands == 2:
+                offset_x = -0.4 if h_idx == 0 else 0.4
+                
+            center_x = int(width // 2 + offset_x * width * 0.5)
+            center_y = height // 2
+            scale = min(width, height) * 0.3
+            
+            coords = []
+            for i in range(21):
+                lx, ly = landmarks[i][0], landmarks[i][1]
+                px = int(center_x + lx * scale)
+                py = int(center_y + ly * scale)
+                coords.append((px, py))
+                # Different colors for different hands
+                color = (0, 255, 0) if h_idx == 0 else (255, 255, 0)
+                cv2.circle(canvas, (px, py), 3, color, -1)
+                
+            for connection in self.connections:
+                start_idx, end_idx = connection
+                cv2.line(canvas, coords[start_idx], coords[end_idx], (255, 255, 255), 1)
             
         return canvas

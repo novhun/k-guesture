@@ -91,15 +91,23 @@ class AudioPlayer:
             safe_filename = f"{text_hash}.mp3"
             filepath = os.path.join(AUDIO_DIR, safe_filename)
 
-        # Generate audio file if it doesn't exist
-        if not os.path.exists(filepath):
+        # Generate audio file if it doesn't exist or is empty
+        if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
             try:
+                # If it's a 0-byte file, delete it first to re-generate
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    
                 if self.tts_engine == "Edge-TTS":
                     voice = self.khmer_voice if is_khmer else self.english_voice
                     asyncio.run(self._generate_audio_edge(text, voice, filepath))
                 else:
                     self._generate_audio_gtts(text, is_khmer, filepath)
                 
+                # Double check if generation actually worked
+                if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+                    raise Exception("Audio file is still empty after generation (check internet connection)")
+
                 # Save to DB for future use
                 if gesture_id:
                     from database import save_audio_path
@@ -111,16 +119,24 @@ class AudioPlayer:
                 return
 
         try:
-            # Play audio
-            pygame.mixer.music.load(filepath)
-            pygame.mixer.music.play()
-            
-            # Wait for the audio to finish playing
-            while pygame.mixer.music.get_busy():
-                pygame.time.Clock().tick(10)
+            # Final safety check before loading
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                # Play audio
+                pygame.mixer.music.load(filepath)
+                pygame.mixer.music.play()
+                
+                # Wait for the audio to finish playing
+                while pygame.mixer.music.get_busy():
+                    pygame.time.Clock().tick(10)
+            else:
+                print(f"Skipping playback: File {filepath} is empty or missing.")
                 
         except Exception as e:
             print(f"Error playing audio: {e}")
+            # If pygame says it's corrupt, delete it so we can retry next time
+            if "corrupt" in str(e).lower() or "bad tags" in str(e).lower():
+                try: os.remove(filepath)
+                except: pass
         finally:
             if not wait:
                 self.is_playing = False
