@@ -1,0 +1,10 @@
+PyQt5>=5.15.10
+opencv-python>=4.9.0.80
+mediapipe>=0.10.30
+numpy>=1.26.4
+pygame>=2.0.0
+gTTS>=2.5.1
+googletrans==4.0.0-rc1
+Pillow>=10.3.0
+legacy-cgi
+edge-tts
